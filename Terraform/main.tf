@@ -5,7 +5,6 @@ terraform {
       version = "~> 4.16"
     }
   }
-
   required_version = ">= 1.2.0"
 }
 
@@ -13,66 +12,68 @@ provider "aws" {
   region  = "eu-west-3"
 }
 
+data "aws_vpc" "main" {
+  id = var.vpc_id
+}
 
-
-
-# resource "aws_s3_bucket" "bucket1" {
-#   bucket = var.bucket_name
-#   tags = {
-#     Name        = "My bucket Name"
-#     Environment = "Dev"
-#   }
-#   force_destroy = true
-# }
-
-
-
-# resource "aws_s3_bucket" "bucket2" {
-#   bucket = "athenaoutputtanguy123456789"
-#   tags = {
-#     Name        = "My bucket Name"
-#     Environment = "Dev"
-#   }
-#   force_destroy = true
-# }
-
-# resource "aws_redshift_cluster" "cluster1" {
-#   cluster_identifier = "tf-redshift-cluster-1"
-#   database_name      = "tanguydb1"
-#   master_username    = "tanguyrenaudie"
-#   master_password    = "LUcas50!!"
-#   node_type          = "dc2.large"
-#   cluster_type       = "single-node"
-#   skip_final_snapshot = true
-#   iam_roles = [var.redshift_iam_role]
-#   }
-
-
-
-# resource "aws_glue_crawler" "example" {
-#   database_name = "peopleTweets"
-#   name          = "crawler_df"
-#   role          = "arn:aws:iam::799629864843:role/service-role/AWSGlueServiceRole-Enigma"
-
-#   s3_target {
-#     path = "s3://${aws_s3_bucket.bucket1.bucket}"
-#   }
-# }
-
-
-#ami-03b755af568109dc3
-resource "aws_instance" "web" {
+resource "aws_instance" "webApp" {
   ami           = "ami-03b755af568109dc3"
-  instance_type = "t3.micro"
-  vpc_security_group_ids = ["sg-0a81a8facaa9279fe"]
-  key_name = aws_key_pair.flask_key_1_resource.key_name
+  instance_type = "t2.micro" #free tier eligible
+  vpc_security_group_ids = [aws_security_group.allowHttpSSH.id]
+  key_name = aws_key_pair.key1.key_name
 
   tags = {
     Name = "FlaskInstance"
   }
 }
 
-resource "aws_key_pair" "flask_key_1_resource" {
-  key_name   = "flask_key_1_name"
-  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDLkBJpfNVqiv5IRq8+alSqWD+bFj0ML0TPJSGk+aDeg14ttSQlzLiPQIQBhdRdbC3ja12WJih5RmuHlauyJX+FUcTOBm7R/gx0JMwFmK/e+uM3WF1WZzr4w3OrBsbPQ9W/5KpCPv5Y4V5anvST8M91I3sGiUftlxllCw6Z/TMXxV7YQtKHQKCmDd5YfzNBHLLrgvFT5d3jyokP0ocvN7vLkaZrOai5P0cCBdrzGYMRLpvHB/aZboLmJhBRUvS6p8hT0UAOEe1epdgguLrFjpoizqtDCtD/ntaPPJeoIMRnOLqyT8dXDmWTUItSib0P+K497S7whD+nXtooWELXC8lJZl7SqtOdc5x7CagBRX/nq2E2rQr2o29+Th+BwU9o+DXkWKuTDaJBnf/Z5uaxoI/+eZ+i1r7MKK6+NRHug7P/A422z4YR6P7lnSxSoYYV0t+4Iu2FTrrbfCdxL5b5yilqTN+MUDDKVqIr7uYATyoQwnTd1ZLA4fgMUm7ZJdx+n18= tanguyrenaudie@Tanguys-MBP"
+#Building and locally saving key pair and storing the public key on AWS
+resource "tls_private_key" "key1" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "local_file" "foo" {
+    content  = tls_private_key.key1.private_key_pem
+    filename = "${path.module}/key1.pem"
+}
+
+resource "aws_key_pair" "key1" {
+  key_name   = "key1"
+  public_key = tls_private_key.key1.public_key_openssh
+  }
+
+
+
+resource "aws_security_group" "allowHttpSSH" {
+  name        = "allowHttpSSH"
+  description = "Allow SSH inbound traffic and HTTP"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description      = "HTTP from Web"
+    from_port        = 80 #default HTTP port range
+    to_port          = 80 
+    protocol         = "tcp"
+    cidr_blocks      =  ["0.0.0.0/0"]
+  }
+    ingress {
+    description      = "SSH with Key Pair"
+    from_port        = 22 #default SSH port range
+    to_port          = 22 
+    protocol         = "tcp"
+    cidr_blocks      =  ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  tags = {
+    Name = "allow_http_ssh"
+  }
 }
